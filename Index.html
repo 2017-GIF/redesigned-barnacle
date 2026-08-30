@@ -1,0 +1,1146 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FBI: Language Agent — New York</title>
+
+<style>
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: Arial, sans-serif;
+  background: #101820;
+  color: white;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #8faab8;
+}
+
+.hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+.panel {
+  background: rgba(12, 22, 30, .9);
+  border: 1px solid #73818b;
+  border-radius: 10px;
+  padding: 12px;
+  box-shadow: 0 5px 20px rgba(0,0,0,.4);
+}
+
+.top {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.agent {
+  min-width: 230px;
+}
+
+.agent b {
+  font-size: 18px;
+}
+
+.mission {
+  min-width: 270px;
+}
+
+.mission strong {
+  color: #f1c44c;
+}
+
+.xpbar {
+  margin-top: 7px;
+  height: 7px;
+  background: #39434b;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.xpfill {
+  width: 0%;
+  height: 100%;
+  background: #f1c44c;
+}
+
+.controls {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  font-size: 12px;
+}
+
+.toast {
+  position: absolute;
+  left: 50%;
+  top: 170px;
+  transform: translateX(-50%);
+  display: none;
+}
+
+.dialog {
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  width: min(750px, calc(100% - 30px));
+  display: none;
+  pointer-events: auto;
+}
+
+.dialog .name {
+  color: #59b6e8;
+  font-weight: bold;
+}
+
+.dialog p {
+  line-height: 1.5;
+}
+
+button {
+  background: #263641;
+  color: white;
+  border: 1px solid #71808c;
+  border-radius: 7px;
+  padding: 10px 14px;
+  margin: 4px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #40525f;
+}
+
+.menu {
+  position: absolute;
+  inset: 0;
+  background: rgba(4,10,16,.94);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+.menu-box {
+  width: min(520px, 90%);
+  text-align: center;
+}
+
+.menu h1 {
+  font-size: 34px;
+  margin-bottom: 8px;
+}
+
+.menu p {
+  color: #cbd4da;
+  line-height: 1.5;
+}
+
+.hidden {
+  display: none !important;
+}
+
+#mobileControls {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  .mission {
+    display: none;
+  }
+
+  .controls {
+    display: none;
+  }
+
+  #mobileControls {
+    display: block;
+    position: absolute;
+    left: 20px;
+    bottom: 20px;
+    pointer-events: auto;
+  }
+
+  .joystick {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    background: rgba(255,255,255,.15);
+    border: 2px solid rgba(255,255,255,.35);
+    position: relative;
+  }
+
+  .stick {
+    width: 50px;
+    height: 50px;
+    background: rgba(255,255,255,.45);
+    border-radius: 50%;
+    position: absolute;
+    left: 35px;
+    top: 35px;
+  }
+}
+</style>
+</head>
+
+<body>
+
+<canvas id="game"></canvas>
+
+<div class="hud">
+
+  <div class="top">
+
+    <div class="panel agent">
+      🕵️ <b>AGENT OKAN</b>
+      <div>⭐ XP: <span id="xp">0</span> · Rank: <span id="rank">ROOKIE</span></div>
+
+      <div class="xpbar">
+        <div class="xpfill" id="xpfill"></div>
+      </div>
+    </div>
+
+    <div class="panel mission">
+      <strong id="missionNumber">MISSION 01</strong>
+      <div id="missionTitle">The Missing Scientist</div>
+      <small>◉ <span id="objective">Talk to the witness</span></small>
+    </div>
+
+  </div>
+
+  <div class="panel controls">
+    WASD / ARROWS — MOVE · SHIFT — RUN · E — TALK
+  </div>
+
+  <div class="panel toast" id="toast"></div>
+
+  <div class="panel dialog" id="dialog">
+    <div class="name" id="speaker"></div>
+    <p id="line"></p>
+    <div id="answers"></div>
+  </div>
+
+  <div id="mobileControls">
+    <div class="joystick" id="joystick">
+      <div class="stick" id="stick"></div>
+    </div>
+  </div>
+
+  <div class="menu" id="menu">
+    <div class="panel menu-box">
+      <h1>FBI: LANGUAGE AGENT</h1>
+
+      <p>
+        <b>NEW YORK CITY</b><br><br>
+        Explore New York, talk to witnesses,
+        collect clues and solve FBI cases in English.
+      </p>
+
+      <button id="startButton">▶ START MISSION</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+let W = 0;
+let H = 0;
+
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+
+window.addEventListener("resize", resize);
+resize();
+
+/* =========================
+   PLAYER
+========================= */
+
+const player = {
+  x: 500,
+  y: 350,
+  radius: 16,
+  speed: 3,
+  runSpeed: 6,
+  vx: 0,
+  vy: 0,
+  facing: "down"
+};
+
+/* =========================
+   KEYBOARD
+========================= */
+
+const keys = {};
+
+window.addEventListener("keydown", event => {
+
+  const key = event.key.toLowerCase();
+
+  keys[key] = true;
+
+  if (
+    ["arrowup", "arrowdown", "arrowleft", "arrowright", " "]
+    .includes(key)
+  ) {
+    event.preventDefault();
+  }
+
+  if (key === "e" && nearNPC && !dialogOpen) {
+    openDialog();
+  }
+
+  if (key === "escape") {
+    closeDialog();
+  }
+
+});
+
+window.addEventListener("keyup", event => {
+  keys[event.key.toLowerCase()] = false;
+});
+
+/* =========================
+   MISSIONS
+========================= */
+
+const missions = [
+
+  {
+    title: "The Missing Scientist",
+    objective: "Talk to the witness",
+
+    npcs: [
+      {
+        name: "WITNESS",
+        x: 650,
+        y: 350,
+        text: "I saw Dr. Wilson yesterday. He wore a black jacket.",
+        question: "What was he wearing?",
+        answers: ["Red hat", "Black jacket", "Blue shirt"],
+        correct: 1
+      },
+
+      {
+        name: "HARBOR CLUE",
+        x: 1000,
+        y: 200,
+        text: "A man with a red bag left the harbor at 9 PM.",
+        question: "What did the man have?",
+        answers: ["A red bag", "A blue coat", "A camera"],
+        correct: 0
+      },
+
+      {
+        name: "WAREHOUSE",
+        x: 1300,
+        y: 520,
+        text: "The scientist was taken to warehouse 7.",
+        question: "Where was he taken?",
+        answers: ["Hotel 7", "Warehouse 7", "Office 7"],
+        correct: 1
+      }
+    ]
+  },
+
+  {
+    title: "The Stolen Painting",
+    objective: "Find the museum witness",
+
+    npcs: [
+      {
+        name: "CURATOR",
+        x: 600,
+        y: 250,
+        text: "The painting disappeared from the museum at nine.",
+        question: "When did it disappear?",
+        answers: ["Eight", "Nine", "Ten"],
+        correct: 1
+      },
+
+      {
+        name: "GUARD",
+        x: 900,
+        y: 500,
+        text: "The camera saw a person in a green coat.",
+        question: "What color was the coat?",
+        answers: ["Blue", "Green", "Black"],
+        correct: 1
+      },
+
+      {
+        name: "GALLERY",
+        x: 1350,
+        y: 220,
+        text: "The thief left an empty frame behind.",
+        question: "What was empty?",
+        answers: ["The frame", "The bag", "The room"],
+        correct: 0
+      }
+    ]
+  },
+
+  {
+    title: "The Secret Message",
+    objective: "Decode the message",
+
+    npcs: [
+      {
+        name: "ANALYST",
+        x: 450,
+        y: 550,
+        text: "The message says: Meet at the bridge at six.",
+        question: "Where is the meeting?",
+        answers: ["Bridge", "Hotel", "Airport"],
+        correct: 0
+      },
+
+      {
+        name: "ARCHIVE",
+        x: 800,
+        y: 180,
+        text: "The sender used the name Agent Fox.",
+        question: "Who sent it?",
+        answers: ["Agent Wolf", "Agent Fox", "Agent Blue"],
+        correct: 1
+      },
+
+      {
+        name: "BRIDGE",
+        x: 1400,
+        y: 500,
+        text: "The person arrived exactly at six o’clock.",
+        question: "When did they arrive?",
+        answers: ["5 PM", "6 PM", "7 PM"],
+        correct: 1
+      }
+    ]
+  }
+
+];
+
+let missionIndex = 0;
+let xp = 0;
+let nearNPC = null;
+let dialogOpen = false;
+let gameStarted = false;
+
+/* =========================
+   CAMERA
+========================= */
+
+const camera = {
+  x: 0,
+  y: 0
+};
+
+/* =========================
+   GAME START
+========================= */
+
+document.getElementById("startButton").onclick = () => {
+
+  document.getElementById("menu").classList.add("hidden");
+
+  gameStarted = true;
+
+  startMission();
+
+  requestAnimationFrame(gameLoop);
+};
+
+/* =========================
+   MISSION
+========================= */
+
+function startMission() {
+
+  nearNPC = null;
+  dialogOpen = false;
+
+  player.x = 400;
+  player.y = 350;
+
+  const mission = missions[missionIndex];
+
+  document.getElementById("missionNumber").textContent =
+    "MISSION " + String(missionIndex + 1).padStart(2, "0");
+
+  document.getElementById("missionTitle").textContent =
+    mission.title;
+
+  document.getElementById("objective").textContent =
+    mission.objective;
+
+  mission.npcs.forEach(npc => {
+    npc.done = false;
+  });
+
+  showToast("Mission started!");
+}
+
+/* =========================
+   MOVEMENT
+========================= */
+
+function updateMovement() {
+
+  let dx = 0;
+  let dy = 0;
+
+  if (keys["w"] || keys["arrowup"]) {
+    dy -= 1;
+    player.facing = "up";
+  }
+
+  if (keys["s"] || keys["arrowdown"]) {
+    dy += 1;
+    player.facing = "down";
+  }
+
+  if (keys["a"] || keys["arrowleft"]) {
+    dx -= 1;
+    player.facing = "left";
+  }
+
+  if (keys["d"] || keys["arrowright"]) {
+    dx += 1;
+    player.facing = "right";
+  }
+
+  /* Normalize diagonal movement */
+
+  const length = Math.hypot(dx, dy);
+
+  if (length > 0) {
+    dx /= length;
+    dy /= length;
+  }
+
+  const speed =
+    keys["shift"]
+      ? player.runSpeed
+      : player.speed;
+
+  /* Smooth acceleration */
+
+  player.vx += (dx * speed - player.vx) * 0.25;
+  player.vy += (dy * speed - player.vy) * 0.25;
+
+  /* Stop */
+
+  if (dx === 0) {
+    player.vx *= 0.75;
+  }
+
+  if (dy === 0) {
+    player.vy *= 0.75;
+  }
+
+  player.x += player.vx;
+  player.y += player.vy;
+
+  /* World boundaries */
+
+  player.x = Math.max(
+    player.radius,
+    Math.min(1500 - player.radius, player.x)
+  );
+
+  player.y = Math.max(
+    player.radius,
+    Math.min(700 - player.radius, player.y)
+  );
+
+  /* Find nearest NPC */
+
+  nearNPC = null;
+
+  let closest = Infinity;
+
+  for (const npc of missions[missionIndex].npcs) {
+
+    if (npc.done) continue;
+
+    const distance = Math.hypot(
+      player.x - npc.x,
+      player.y - npc.y
+    );
+
+    if (distance < closest && distance < 90) {
+      closest = distance;
+      nearNPC = npc;
+    }
+  }
+
+  /* Camera */
+
+  camera.x = player.x - W / 2;
+  camera.y = player.y - H / 2;
+
+  camera.x = Math.max(0, Math.min(1500 - W, camera.x));
+  camera.y = Math.max(0, Math.min(700 - H, camera.y));
+}
+
+/* =========================
+   DRAW CITY
+========================= */
+
+function drawCity() {
+
+  ctx.fillStyle = "#8faab8";
+  ctx.fillRect(0, 0, 1500, 700);
+
+  /* Water */
+
+  ctx.fillStyle = "#5b899b";
+  ctx.fillRect(0, 0, 1500, 80);
+
+  /* Buildings */
+
+  for (let x = 30; x < 1500; x += 140) {
+
+    for (let y = 100; y < 680; y += 120) {
+
+      ctx.fillStyle = "#c5ccd0";
+
+      ctx.fillRect(
+        x,
+        y,
+        105,
+        90
+      );
+
+      ctx.fillStyle = "#7e929c";
+
+      for (let wx = x + 15; wx < x + 90; wx += 25) {
+
+        ctx.fillRect(
+          wx,
+          y + 15,
+          12,
+          18
+        );
+
+      }
+    }
+  }
+
+  /* Main road */
+
+  ctx.fillStyle = "#3c454b";
+  ctx.fillRect(0, 310, 1500, 120);
+
+  /* Road markings */
+
+  ctx.fillStyle = "#e0bd5b";
+
+  for (let x = 0; x < 1500; x += 90) {
+
+    ctx.fillRect(
+      x,
+      367,
+      45,
+      6
+    );
+  }
+
+  /* NYC label */
+
+  ctx.fillStyle = "white";
+  ctx.font = "bold 25px Arial";
+
+  ctx.fillText(
+    "NEW YORK CITY",
+    35,
+    45
+  );
+
+  /* FBI building */
+
+  ctx.fillStyle = "#29353b";
+
+  ctx.fillRect(
+    1040,
+    120,
+    320,
+    160
+  );
+
+  ctx.fillStyle = "#f1c44c";
+  ctx.font = "bold 50px Arial";
+
+  ctx.fillText(
+    "FBI",
+    1155,
+    215
+  );
+
+  ctx.fillStyle = "white";
+  ctx.font = "12px Arial";
+
+  ctx.fillText(
+    "FEDERAL BUREAU OF INVESTIGATION",
+    1060,
+    250
+  );
+}
+
+/* =========================
+   DRAW NPC
+========================= */
+
+function drawNPC(npc) {
+
+  ctx.beginPath();
+
+  ctx.arc(
+    npc.x,
+    npc.y,
+    24,
+    0,
+    Math.PI * 2
+  );
+
+  ctx.fillStyle =
+    npc.done
+      ? "#55705f"
+      : "#263f4f";
+
+  ctx.fill();
+
+  ctx.lineWidth = 3;
+
+  ctx.strokeStyle =
+    nearNPC === npc
+      ? "#f1c44c"
+      : "#b9c8d0";
+
+  ctx.stroke();
+
+  ctx.fillStyle = "white";
+  ctx.font = "bold 11px Arial";
+  ctx.textAlign = "center";
+
+  ctx.fillText(
+    npc.name,
+    npc.x,
+    npc.y - 34
+  );
+
+  ctx.textAlign = "left";
+}
+
+/* =========================
+   DRAW PLAYER
+========================= */
+
+function drawPlayer() {
+
+  /* Shadow */
+
+  ctx.beginPath();
+
+  ctx.ellipse(
+    player.x,
+    player.y + 15,
+    17,
+    7,
+    0,
+    0,
+    Math.PI * 2
+  );
+
+  ctx.fillStyle = "rgba(0,0,0,.35)";
+  ctx.fill();
+
+  /* Body */
+
+  ctx.beginPath();
+
+  ctx.arc(
+    player.x,
+    player.y,
+    player.radius,
+    0,
+    Math.PI * 2
+  );
+
+  ctx.fillStyle = "#172d42";
+  ctx.fill();
+
+  ctx.strokeStyle = "#f1c44c";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  /* FBI badge */
+
+  ctx.fillStyle = "#f1c44c";
+  ctx.font = "bold 9px Arial";
+  ctx.textAlign = "center";
+
+  ctx.fillText(
+    "FBI",
+    player.x,
+    player.y + 3
+  );
+
+  ctx.textAlign = "left";
+}
+
+/* =========================
+   DRAW
+========================= */
+
+function draw() {
+
+  ctx.clearRect(0, 0, W, H);
+
+  ctx.save();
+
+  ctx.translate(
+    -camera.x,
+    -camera.y
+  );
+
+  drawCity();
+
+  for (const npc of missions[missionIndex].npcs) {
+    drawNPC(npc);
+  }
+
+  drawPlayer();
+
+  ctx.restore();
+
+  /* Interaction */
+
+  if (nearNPC && !dialogOpen) {
+
+    ctx.fillStyle = "rgba(0,0,0,.75)";
+
+    ctx.fillRect(
+      W / 2 - 100,
+      H - 75,
+      200,
+      38
+    );
+
+    ctx.fillStyle = "white";
+    ctx.font = "bold 14px Arial";
+    ctx.textAlign = "center";
+
+    ctx.fillText(
+      "Press E to talk",
+      W / 2,
+      H - 51
+    );
+
+    ctx.textAlign = "left";
+  }
+}
+
+/* =========================
+   DIALOG
+========================= */
+
+function openDialog() {
+
+  if (!nearNPC) return;
+
+  dialogOpen = true;
+
+  const npc = nearNPC;
+
+  document.getElementById("dialog").style.display = "block";
+
+  document.getElementById("speaker").textContent =
+    npc.name;
+
+  document.getElementById("line").textContent =
+    npc.text + " " + npc.question;
+
+  const answers =
+    document.getElementById("answers");
+
+  answers.innerHTML = "";
+
+  npc.answers.forEach((answer, index) => {
+
+    const button =
+      document.createElement("button");
+
+    button.textContent = answer;
+
+    button.onclick = () => {
+      answerQuestion(index);
+    };
+
+    answers.appendChild(button);
+
+  });
+}
+
+function closeDialog() {
+
+  dialogOpen = false;
+
+  document.getElementById("dialog").style.display = "none";
+}
+
+/* =========================
+   ANSWER
+========================= */
+
+function answerQuestion(index) {
+
+  const npc = nearNPC;
+
+  if (!npc) return;
+
+  if (index === npc.correct) {
+
+    npc.done = true;
+
+    xp += 25;
+
+    updateXP();
+
+    showToast("✓ Correct! +25 XP");
+
+    closeDialog();
+
+    checkMission();
+
+  } else {
+
+    showToast("❌ Wrong answer. Try again.");
+
+  }
+}
+
+/* =========================
+   MISSION COMPLETE
+========================= */
+
+function checkMission() {
+
+  const completed =
+    missions[missionIndex].npcs.every(
+      npc => npc.done
+    );
+
+  if (!completed) return;
+
+  xp += 50;
+
+  updateXP();
+
+  showToast("🏆 CASE SOLVED! +50 XP");
+
+  setTimeout(() => {
+
+    if (missionIndex < missions.length - 1) {
+
+      missionIndex++;
+
+      startMission();
+
+    } else {
+
+      showToast(
+        "🏅 ALL MISSIONS COMPLETE!"
+      );
+
+    }
+
+  }, 1500);
+}
+
+/* =========================
+   XP
+========================= */
+
+function updateXP() {
+
+  document.getElementById("xp").textContent = xp;
+
+  let rank = "ROOKIE";
+
+  if (xp >= 150) {
+    rank = "FIELD AGENT";
+  }
+
+  if (xp >= 300) {
+    rank = "ELITE";
+  }
+
+  document.getElementById("rank").textContent = rank;
+
+  document.getElementById("xpfill").style.width =
+    Math.min(100, xp / 3) + "%";
+}
+
+/* =========================
+   TOAST
+========================= */
+
+function showToast(text) {
+
+  const toast =
+    document.getElementById("toast");
+
+  toast.textContent = text;
+
+  toast.style.display = "block";
+
+  clearTimeout(window.toastTimer);
+
+  window.toastTimer =
+    setTimeout(() => {
+
+      toast.style.display = "none";
+
+    }, 2200);
+}
+
+/* =========================
+   GAME LOOP
+========================= */
+
+function gameLoop() {
+
+  if (!gameStarted) return;
+
+  if (!dialogOpen) {
+    updateMovement();
+  }
+
+  draw();
+
+  requestAnimationFrame(gameLoop);
+}
+
+/* =========================
+   MOBILE JOYSTICK
+========================= */
+
+const joystick =
+  document.getElementById("joystick");
+
+const stick =
+  document.getElementById("stick");
+
+let joystickActive = false;
+
+joystick.addEventListener(
+  "touchstart",
+  event => {
+
+    joystickActive = true;
+
+    event.preventDefault();
+
+  },
+  { passive: false }
+);
+
+joystick.addEventListener(
+  "touchmove",
+  event => {
+
+    if (!joystickActive) return;
+
+    const touch = event.touches[0];
+
+    const rect =
+      joystick.getBoundingClientRect();
+
+    let dx =
+      touch.clientX -
+      (rect.left + rect.width / 2);
+
+    let dy =
+      touch.clientY -
+      (rect.top + rect.height / 2);
+
+    const distance =
+      Math.hypot(dx, dy);
+
+    const max =
+      rect.width / 2 - 25;
+
+    if (distance > max) {
+
+      dx =
+        dx / distance * max;
+
+      dy =
+        dy / distance * max;
+
+    }
+
+    stick.style.transform =
+      `translate(${dx}px, ${dy}px)`;
+
+    const threshold = 10;
+
+    keys["w"] = dy < -threshold;
+    keys["s"] = dy > threshold;
+    keys["a"] = dx < -threshold;
+    keys["d"] = dx > threshold;
+
+    event.preventDefault();
+
+  },
+  { passive: false }
+);
+
+function stopJoystick() {
+
+  joystickActive = false;
+
+  stick.style.transform =
+    "translate(0,0)";
+
+  keys["w"] = false;
+  keys["a"] = false;
+  keys["s"] = false;
+  keys["d"] = false;
+}
+
+joystick.addEventListener(
+  "touchend",
+  stopJoystick
+);
+
+joystick.addEventListener(
+  "touchcancel",
+  stopJoystick
+);
+</script>
+
+</body>
+</html>
